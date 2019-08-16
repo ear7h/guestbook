@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"html"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -26,7 +27,6 @@ func main() {
 	} else {
 		gb.File = flag.Args()[0]
 	}
-
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -57,8 +57,9 @@ func (gb *GuestBook) handlePost(w http.ResponseWriter, r *http.Request) {
 	buf := make([]byte, 1024) // max msg length
 	n, err := r.Body.Read(buf)
 	r.Body.Close()
-	if err != nil {
+	if err != nil && err != io.EOF {
 		http.Error(w, err.Error(), 400)
+		return
 	}
 
 	gb.Write(buf[:n])
@@ -90,9 +91,8 @@ func (gb *GuestBook) Entries() ([]string, error) {
 	}
 	gb.lock.Unlock()
 
-
 	arr := bytes.Split(byt, []byte{'\n'})
-	arr = arr[:len(arr) - 1]
+	arr = arr[:len(arr)-1]
 	ret := make([]string, len(arr))
 	enc := base64.StdEncoding
 
