@@ -92,19 +92,28 @@ func (gb *GuestBook) Entries() ([]string, error) {
 
 
 	arr := bytes.Split(byt, []byte{'\n'})
+	arr = arr[:len(arr) - 1]
 	ret := make([]string, len(arr))
 	enc := base64.StdEncoding
 
+	// there will be one newline at the very end
+	// leaving an empty string
 	for i, v := range arr {
 		buf := make([]byte, enc.DecodedLen(len(v)))
-		enc.Decode(buf, v)
-		ret[i] = html.EscapeString(string(buf))
+		n, err := enc.Decode(buf, v)
+		if err != nil {
+			return nil, err
+		}
+		ret[i] = html.EscapeString(string(buf[:n]))
 	}
 
 	return ret, nil
 }
 
 func (gb *GuestBook) Write(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
 	gb.lock.Lock()
 	defer gb.lock.Unlock()
 
