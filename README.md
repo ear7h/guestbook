@@ -4,5 +4,5 @@ A very simple guest book HTTP api
 
 ## Paths
 
-* `GET /\*` - Retursn a `JSON` array of all entries
-* `POST /\*` - adds the body of the request to the guest book
+* `GET /` - Returns the guestbook page
+* `POST /` - expects a form body with a `signature` key

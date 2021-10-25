@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<head>
+	<meta charset="utf-8">
+	<title>ear7h.net guest book</title>
+</head>
+<body>
+	<h1>welcome to the ear7h.net guest book!</h1>
+	<h2>* please don't be mean</h2>
+
+	<form method="post">
+		<input type="text" name="signature"></input>
+		<input type="submit" value="sign!">
+	</form>
+	<ol>
+		{{ range . }}
+		<li>{{.}}</li>
+		{{ end }}
+	</ol>
+</body>

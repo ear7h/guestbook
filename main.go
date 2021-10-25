@@ -6,15 +6,22 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"html"
-	"io"
 	"io/ioutil"
+	"bufio"
 	"net/http"
 	"os"
 	"sync"
+	"html/template"
+	_ "embed"
 )
 
 var port = flag.Uint("p", 2001, "the port to listen on")
+
+
+//go:embed index.html.tmpl
+var indexTmplStr string
+
+var indexTmpl = template.Must(template.New("index").Parse(indexTmplStr))
 
 func main() {
 	flag.Parse()
@@ -45,24 +52,29 @@ func main() {
 }
 
 func (gb *GuestBook) handleGet(w http.ResponseWriter, r *http.Request) {
-	byt, err := gb.MarshalJSON()
+	arr, err := gb.Entries()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), 500)
+		return
 	}
 
-	w.Write(byt)
+	err = indexTmpl.Execute(w, arr)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 }
 
 func (gb *GuestBook) handlePost(w http.ResponseWriter, r *http.Request) {
-	buf := make([]byte, 1024) // max msg length
-	n, err := r.Body.Read(buf)
-	r.Body.Close()
-	if err != nil && err != io.EOF {
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	err := r.ParseForm()
+	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}
 
-	gb.Write(buf[:n])
+	gb.AddSignature(r.PostForm.Get("signature"))
+
 	gb.handleGet(w, r)
 }
 
@@ -82,35 +94,34 @@ func (gb *GuestBook) MarshalJSON() ([]byte, error) {
 }
 
 func (gb *GuestBook) Entries() ([]string, error) {
-	gb.lock.Lock()
 
+	gb.lock.Lock()
 	byt, err := ioutil.ReadFile(gb.File)
-	if err != nil {
-		gb.lock.Unlock()
-		return nil, err
-	}
 	gb.lock.Unlock()
 
-	arr := bytes.Split(byt, []byte{'\n'})
-	arr = arr[:len(arr)-1]
-	ret := make([]string, len(arr))
-	enc := base64.StdEncoding
+	if err != nil {
+		return nil, err
+	}
 
-	// there will be one newline at the very end
-	// leaving an empty string
-	for i, v := range arr {
-		buf := make([]byte, enc.DecodedLen(len(v)))
-		n, err := enc.Decode(buf, v)
+	scanner := bufio.NewScanner(bytes.NewReader(byt))
+	ret := make([]string, 0, 1024)
+	enc := base64.StdEncoding
+	for scanner.Scan() {
+		decoded, err := enc.DecodeString(scanner.Text())
 		if err != nil {
 			return nil, err
 		}
-		ret[i] = html.EscapeString(string(buf[:n]))
+		ret = append(ret, string(decoded))
+	}
+
+	for i := 0; i < len(ret) / 2; i++ {
+		ret[i], ret[len(ret) - i - 1] = ret[len(ret) - i - 1], ret[i]
 	}
 
 	return ret, nil
 }
 
-func (gb *GuestBook) Write(data []byte) error {
+func (gb *GuestBook) AddSignature(data string) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -123,7 +134,7 @@ func (gb *GuestBook) Write(data []byte) error {
 	}
 
 	w := base64.NewEncoder(base64.StdEncoding, file)
-	w.Write(data)
+	w.Write([]byte(data))
 	w.Close()
 	file.Write([]byte{'\n'})
 	file.Close()
